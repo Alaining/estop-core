@@ -1,0 +1,5 @@
+CONFIG_IDF_TARGET="esp32p4"
+# The network: the P4's internal Ethernet MAC (protocol_examples_common).
+CONFIG_EXAMPLE_CONNECT_WIFI=n
+CONFIG_EXAMPLE_CONNECT_ETHERNET=y
+CONFIG_EXAMPLE_USE_INTERNAL_ETHERNET=y

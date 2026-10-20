@@ -12,18 +12,53 @@ to take part in the e-stop on the `rammp/estop` RTPS topic, behind a small API.
 The message and its timing come from the RAMMP RTPS spec
 ([rammp-rtps](https://github.com/rammp-org/rammp-rtps), `messages/estop_message.hpp`).
 
+## Use
+
+```cpp
+#include "estop/estop.hpp"
+
+// A node (the HMI): its switch on GPIO2, normally open to GND.
+static estop::Node node({.name = "hmi", .gpio = 2, .contact = estop::Contact::NO});
+
+// The latch (the MIB): watches "hmi", clear button on GPIO35 held for 2 s.
+static estop::Latch latch({.clear_gpio = 35});
+
+extern "C" void app_main() {
+  node.start();               // first: the switch works from here, before the network
+  // ... bring the network up, create and start the espp::RtpsParticipant ...
+  node.attach(participant);   // adds the rammp/estop writer and reader
+  if (node.active()) { /* do not drive */ }
+}
+```
+
+| Call | Node | Latch |
+| --- | --- | --- |
+| `start()` | Arms the switch, starts the task. Once, from app_main. | Same, plus the clear input. |
+| `attach(participant)` | Adds the e-stop writer and reader. Once, after start(). | Same. |
+| `active()` | Do not drive: engaged, latch says latched, switch not armed, not started. One atomic load, any task or ISR. | Latched, or not started. |
+| `engage(reason)` | Requests the stop as a press does. Any task. | Latches with this node's reason. |
+| `set_input(gpio, contact)` | Moves the switch (from a setting). | |
+| `start_clear_attempt()` | | The operator asks to end the stop (as holding the clear input does). |
+| `status()` | A copy of the state (counters, latch's reason) for the UI and the log. | Same (cause, attempts, releases). |
+
+The objects hold their task's stack and queues, so declare them static. After `start()`
+nothing allocates, except `attach()` (the endpoints) and, on the latch, causes longer than
+15 characters (room reserved in `start()`). The switch reaches the task through an edge
+interrupt that only counts: a press shorter than any poll period still counts. The
+GPIO ISR service is installed if no one has.
+
+`examples/node` and `examples/latch` are complete programs (network through IDF's
+`protocol_examples_common`, the P4's internal Ethernet).
+
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `include/estop/core/codec.hpp` | Encode (espp/cdr) and an allocation-free decode of `rammp::EStop`. |
-| `include/estop/core/node_logic.hpp` | A node's rules (the HMI's): heartbeat, press, clear-attempt acceptance. No I/O, no clock. |
-| `include/estop/core/latch_logic.hpp` | The latch's rules (the MIB's): latch, deadman, clear attempt, release. No I/O, no clock. |
+| `include/estop/estop.hpp` | `estop::Node`, `estop::Latch`: the ESP-IDF API. |
+| `include/estop/core/` | The rules, plain C++ with no I/O and no clock: `codec.hpp` (encode through espp/cdr, allocation-free decode), `node_logic.hpp`, `latch_logic.hpp`. |
+| `src/esp/` | The tasks, the edge interrupt, RTPS. |
 | `test/` | Host tests: codec, node, latch, and the end-to-end race suite (node against latch through the codec). |
-| `test/idf_app/` | Builds the component for the ESP32-P4 through the component manager. |
-
-The ESP-IDF glue (`estop::Node`, `estop::Latch`: GPIO interrupt, task, RTPS writer and
-reader) comes next, on top of the core.
+| `test/idf_app/`, `examples/` | Built for the ESP32-P4 in CI through the component manager. |
 
 ## Use from a firmware
 

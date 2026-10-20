@@ -3,8 +3,11 @@
 if(ESP_PLATFORM)
   idf_component_register(
     SRCS "src/core/node_logic.cpp" "src/core/latch_logic.cpp"
+         "src/esp/edge_input.cpp" "src/esp/node.cpp" "src/esp/latch.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES cdr rammp_rtps_messages)
+    PRIV_INCLUDE_DIRS "src/esp"
+    REQUIRES cdr rammp_rtps_messages esp_driver_gpio freertos
+    PRIV_REQUIRES rtps esp_timer log)
   return()
 endif()
 

@@ -183,6 +183,9 @@ void test_encode() {
   const std::string n15(15, 'n');
   CHECK(estop::core::encode(full(false, n15, n15, 1, n15, 2), buf) > 0);
 
+  // The latch's longest: its cause (47 characters) and a 15-character clear_target.
+  CHECK(estop::core::encode(full(true, "mib", std::string(47, 'c'), 1, n15, 2), buf) > 0);
+
   // Too long for the buffer: 0, nothing written past it (ASan watches).
   CHECK(estop::core::encode(full(true, "hmi", std::string(200, 'L'), 1, "", 0), buf) == 0);
 }
