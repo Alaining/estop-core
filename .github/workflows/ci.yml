@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the host tests (ASan/UBSan)
+        env:
+          CXX: g++-14
+        run: |
+          cmake -B build
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+
+  idf-build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        path: [test/idf_app, examples/node, examples/latch]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ${{ matrix.path }} for the ESP32-P4
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0
+          target: esp32p4
+          path: ${{ matrix.path }}

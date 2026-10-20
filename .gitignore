@@ -1,0 +1,11 @@
+build/
+test/idf_app/build/
+test/idf_app/managed_components/
+test/idf_app/sdkconfig
+test/idf_app/sdkconfig.old
+test/idf_app/dependencies.lock
+examples/*/build/
+examples/*/managed_components/
+examples/*/dependencies.lock
+examples/*/sdkconfig
+examples/*/sdkconfig.old

@@ -1,0 +1,14 @@
+version: "0.1.0"
+description: "RAMMP robot-wide e-stop on the rammp/estop RTPS topic: node, latch and codec."
+url: https://github.com/Alaining/estop-core
+license: MIT
+dependencies:
+  idf: ">=5.5"
+  espp/cdr: ">=1.3.2"
+  espp/rtps: ">=1.3.2"
+  # The message and its policy. A firmware that has rammp-rtps as a submodule overrides
+  # this with its own copy (a project or EXTRA_COMPONENT_DIRS component wins).
+  rammp_rtps_messages:
+    git: https://github.com/rammp-org/rammp-rtps.git
+    path: components/rammp_rtps_messages
+    version: 3390723cbad6f7a00bd7d5f0ca65fe69635e2122
