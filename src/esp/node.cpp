@@ -40,8 +40,7 @@ bool Node::start() {
   tx_.reason = "";
   tx_.clear_target = "";
   tx_.clear_pub_seq = 0;
-  status_.gpio = config_.gpio;
-  status_.contact = config_.contact;
+  status_.input = config_.input;
   (void)xQueueOverwrite(status_queue_, &status_);
   task_ = xTaskCreateStaticPinnedToCore(task_main, "estop", detail::kStackBytes, this,
                                         config_.task_priority, task_stack_, &task_tcb_,
@@ -68,8 +67,7 @@ bool Node::attach(espp::RtpsParticipant &participant) {
 }
 
 void Node::engage(const char *reason) {
-  detail::Command command{
-      .kind = detail::Command::Kind::ENGAGE, .gpio = -1, .contact = Contact::NO, .reason = {}};
+  detail::Command command{.kind = detail::Command::Kind::ENGAGE, .input = {}, .reason = {}};
   core::copy_text(command.reason, reason != nullptr ? reason : "");
   if (task_ == nullptr) {
     return; // not started: active() is already true
@@ -80,12 +78,11 @@ void Node::engage(const char *reason) {
   xTaskNotifyGive(task_);
 }
 
-void Node::set_input(int gpio, Contact contact) {
+void Node::set_input(const Input &input) {
   const detail::Command command{
-      .kind = detail::Command::Kind::SET_INPUT, .gpio = gpio, .contact = contact, .reason = {}};
+      .kind = detail::Command::Kind::SET_INPUT, .input = input, .reason = {}};
   if (task_ == nullptr) {
-    config_.gpio = gpio; // before start(): start() arms this one
-    config_.contact = contact;
+    config_.input = input; // before start(): start() arms this one
     return;
   }
   if (xQueueSend(command_queue_, &command, portMAX_DELAY) == pdTRUE) {
@@ -145,8 +142,7 @@ void Node::handle(const detail::Command &command, Time) {
     logic_.press();
     break;
   case detail::Command::Kind::SET_INPUT:
-    status_.gpio = command.gpio;
-    status_.contact = command.contact;
+    status_.input = command.input;
     break;
   case detail::Command::Kind::CLEAR_ATTEMPT:
     break; // the latch's
@@ -177,20 +173,20 @@ void Node::run() {
     // A new pin or contact, or arming failed last time (retried every period; until it
     // works active() holds). A switch already held on the new pin is a press: the edge
     // interrupt alone would never see it.
-    if (rearm || (status_.gpio >= 0 && !input_.armed())) {
+    const bool has_switch = status_.input.gpio_num != GPIO_NUM_NC;
+    if (rearm || (has_switch && !input_.armed())) {
       rearm = false;
-      if (status_.gpio < 0) {
+      if (!has_switch) {
         input_.disarm();
-      } else if (input_.arm(status_.gpio, status_.contact, detail::EdgeInput::Edges::PRESS,
-                            task_) &&
+      } else if (input_.arm(status_.input, detail::EdgeInput::Edges::PRESS, task_) &&
                  input_.pressed()) {
-        detail::switch_reason(reason_, status_.gpio);
+        detail::switch_reason(reason_, status_.input.gpio_num);
         logic_.press();
       }
     }
     if (const uint32_t edges = input_.edges(); edges != edges_seen) {
       edges_seen = edges;
-      detail::switch_reason(reason_, status_.gpio);
+      detail::switch_reason(reason_, status_.input.gpio_num);
       logic_.press(); // engaging does not wait for the period
     }
 
@@ -204,7 +200,7 @@ void Node::run() {
       send(now);
     }
 
-    const bool armed = status_.gpio < 0 || input_.armed();
+    const bool armed = status_.input.gpio_num == GPIO_NUM_NC || input_.armed();
     status_.active = logic_.active(now, armed);
     status_.engaged = logic_.engaged();
     status_.latch_engaged = logic_.latch_engaged(now);

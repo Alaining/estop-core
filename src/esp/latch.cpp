@@ -79,18 +79,15 @@ bool Latch::attach(espp::RtpsParticipant &participant) {
 }
 
 void Latch::start_clear_attempt() {
-  const detail::Command command{.kind = detail::Command::Kind::CLEAR_ATTEMPT,
-                                .gpio = -1,
-                                .contact = Contact::NO,
-                                .reason = {}};
+  const detail::Command command{
+      .kind = detail::Command::Kind::CLEAR_ATTEMPT, .input = {}, .reason = {}};
   if (task_ != nullptr && xQueueSend(command_queue_, &command, 0) == pdTRUE) {
     xTaskNotifyGive(task_);
   }
 }
 
 void Latch::engage(const char *reason) {
-  detail::Command command{
-      .kind = detail::Command::Kind::ENGAGE, .gpio = -1, .contact = Contact::NO, .reason = {}};
+  detail::Command command{.kind = detail::Command::Kind::ENGAGE, .input = {}, .reason = {}};
   core::copy_text(command.reason, reason != nullptr ? reason : "");
   if (task_ == nullptr) {
     return; // not started: active() is already true
@@ -162,7 +159,7 @@ void Latch::handle(const detail::Command &command, Time now) {
 // A configured switch that is not armed counts as held: it cannot be trusted to stop the
 // robot, so no clear attempt may start or finish (the latch starts latched).
 bool Latch::switch_held() const {
-  return config_.gpio >= 0 && (!input_.armed() || input_.pressed());
+  return config_.input.gpio_num != GPIO_NUM_NC && (!input_.armed() || input_.pressed());
 }
 
 // The clear input starts one attempt per hold of clear_hold; releasing it re-arms.
@@ -193,19 +190,17 @@ void Latch::run() {
 
     // Arming retried every period until it works; until then the latch holds (an
     // unarmed switch cannot be trusted to stop it).
-    if (config_.gpio >= 0 && !input_.armed() &&
-        input_.arm(config_.gpio, config_.contact, detail::EdgeInput::Edges::PRESS, task_) &&
-        input_.pressed()) {
-      detail::switch_reason(reason_, config_.gpio);
+    if (config_.input.gpio_num != GPIO_NUM_NC && !input_.armed() &&
+        input_.arm(config_.input, detail::EdgeInput::Edges::PRESS, task_) && input_.pressed()) {
+      detail::switch_reason(reason_, config_.input.gpio_num);
       logic_.engage(reason_);
     }
-    if (config_.clear_gpio >= 0 && !clear_input_.armed()) {
-      (void)clear_input_.arm(config_.clear_gpio, config_.clear_contact,
-                             detail::EdgeInput::Edges::BOTH, task_);
+    if (config_.clear_input.gpio_num != GPIO_NUM_NC && !clear_input_.armed()) {
+      (void)clear_input_.arm(config_.clear_input, detail::EdgeInput::Edges::BOTH, task_);
     }
     if (const uint32_t edges = input_.edges(); edges != edges_seen) {
       edges_seen = edges;
-      detail::switch_reason(reason_, config_.gpio);
+      detail::switch_reason(reason_, config_.input.gpio_num);
       logic_.engage(reason_);
     }
 
@@ -239,8 +234,8 @@ void Latch::run() {
 
     status_.latched = logic_.latched();
     status_.clear_attempt_running = logic_.clear_attempt_running();
-    status_.armed = config_.gpio < 0 || input_.armed();
-    status_.clear_armed = config_.clear_gpio < 0 || clear_input_.armed();
+    status_.armed = config_.input.gpio_num == GPIO_NUM_NC || input_.armed();
+    status_.clear_armed = config_.clear_input.gpio_num == GPIO_NUM_NC || clear_input_.armed();
     core::copy_text(status_.cause, logic_.cause());
     status_.clear_attempts = logic_.counters().clear_attempts;
     status_.releases = logic_.counters().releases;

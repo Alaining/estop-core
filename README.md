@@ -1,84 +1,99 @@
 # estop-core
 
-The RAMMP robot-wide emergency stop, as one ESP-IDF component: everything a firmware needs
-to take part in the e-stop on the `rammp/estop` RTPS topic, behind a small API.
+The RAMMP robot-wide emergency stop as one ESP-IDF component. Add it to a firmware, give it
+a GPIO and your RTPS participant, and the board takes part in the e-stop on `rammp/estop`.
 
-- `estop::Node`: any node that can request the stop (the HMI, other boards). It takes the
-  switch GPIO, handles the edge interrupt, sends its state every 100 ms, and accepts the
-  latch's clear attempts.
-- `estop::Latch`: the node that owns the latch (the MIB). It latches on any request or on a
-  silent node (deadman), makes clear attempts, and releases the stop.
+- **`estop::Latch`**: the board that owns the stop (the MIB). Starts stopped, stops on any
+  e-stop press or a silent board, and ends the stop when the clear button is held.
+- **`estop::Node`**: any board with an e-stop switch (the HMI, others). A press stops the
+  robot until the latch clears it.
 
-The message and its timing come from the RAMMP RTPS spec
-([rammp-rtps](https://github.com/rammp-org/rammp-rtps), `messages/estop_message.hpp`).
+## Use it in your ESP-IDF project
 
-## Use
+**1. Add the dependency** in `main/idf_component.yml`:
+
+```yaml
+dependencies:
+  estop_core:
+    git: https://github.com/Alaining/estop-core.git
+    version: v0.2.0
+```
+
+It brings espp/rtps, espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your
+firmware already has rammp-rtps as a submodule, point the message at it so there is one copy:
+
+```yaml
+  rammp_rtps_messages:
+    override_path: "../external/rammp-rtps/components/rammp_rtps_messages"
+```
+
+**2. Create one object, static,** and start it first in `app_main`:
 
 ```cpp
 #include "estop/estop.hpp"
 
-// A node (the HMI): its switch on GPIO2, normally open to GND.
-static estop::Node node({.name = "hmi", .gpio = 2, .contact = estop::Contact::NO});
+// The MIB: watches the HMI, clear button on GPIO35 (held 2 s).
+static estop::Latch latch({.clear_input = {.gpio_num = GPIO_NUM_35}});
 
-// The latch (the MIB): watches "hmi", clear button on GPIO35 held for 2 s.
-static estop::Latch latch({.clear_gpio = 35});
+// ...or a board with a switch: the HMI, switch on GPIO2.
+// static estop::Node node({.name = "hmi", .input = {.gpio_num = GPIO_NUM_2}});
 
 extern "C" void app_main() {
-  node.start();               // first: the switch works from here, before the network
-  // ... bring the network up, create and start the espp::RtpsParticipant ...
-  node.attach(participant);   // adds the rammp/estop writer and reader
-  if (node.active()) { /* do not drive */ }
+  latch.start();                       // first: stopped until cleared
+  // ... bring up the network, create and start your espp::RtpsParticipant ...
+  latch.attach(participant);           // adds the rammp/estop writer and reader
+  // ...
+  if (latch.active()) { stop_motors(); }  // every cycle, any task
 }
 ```
 
-| Call | Node | Latch |
+**3. Wire the switch.** The default input is a normally-open switch from the GPIO to GND,
+with the internal pull-up (pressed = LOW). Change it per input:
+
+```cpp
+.input = {.gpio_num = GPIO_NUM_2,
+          .active_level = estop::ActiveLevel::LOW,  // HIGH for a normally-closed switch
+          .pull = estop::Pull::UP}                  // or DOWN, or NONE (external resistor)
+```
+
+That's all. The complete, commented programs are `examples/latch` (MIB) and
+`examples/node` (HMI).
+
+## API
+
+| Call | `Latch` (MIB) | `Node` (board with a switch) |
 | --- | --- | --- |
-| `start()` | Arms the switch, starts the task. Once, from app_main. | Same, plus the clear input. |
+| `start()` | Arms the inputs, starts the task. Once, first in app_main. | Same. |
 | `attach(participant)` | Adds the e-stop writer and reader. Once, after start(). | Same. |
-| `active()` | Do not drive: engaged, latch says latched, switch not armed, not started. One atomic load, any task or ISR. | Latched, or not started. |
-| `engage(reason)` | Requests the stop as a press does. Any task. | Latches with this node's reason. |
-| `set_input(gpio, contact)` | Moves the switch (from a setting). | |
-| `start_clear_attempt()` | | The operator asks to end the stop (as holding the clear input does). |
-| `status()` | A copy of the state (counters, latch's reason) for the UI and the log. | Same (cause, attempts, releases). |
+| `active()` | The stop is in force: no motion. | Do not drive: pressed, or the latch says stopped. |
+| `engage(reason)` | Stop for your own reason (a fault). | Same as a press. |
+| `start_clear_attempt()` | End the stop, as holding the clear button does. | |
+| `set_input(input)` | | Move the switch (e.g. from a setting). |
+| `status()` | A copy for the UI and the log: cause, attempts, releases. | A copy: counters, the latch's reason. |
 
-The objects hold their task's stack and queues, so declare them static. After `start()`
-nothing allocates, except `attach()` (the endpoints) and, on the latch, causes longer than
-15 characters (room reserved in `start()`). The switch reaches the task through an edge
-interrupt that only counts: a press shorter than any poll period still counts. The
-GPIO ISR service is installed if no one has.
+`active()` is one atomic load, safe from any task. Until `start()` succeeds it is true.
 
-`examples/node` and `examples/latch` are complete programs (network through IDF's
-`protocol_examples_common`, the P4's internal Ethernet).
+## How it works
 
-## Layout
+- Every board sends its state every 100 ms. A press sends ENGAGED at once and keeps sending
+  it, switch released or not, until the latch clears it.
+- The latch stops on any ENGAGED, and on a watched board silent for 300 ms (deadman).
+- A clear attempt asks every board to clear; a board refuses while its switch is held. The
+  latch releases once all have answered, or gives up after 1 s.
+- The interrupt only counts the press: no polling, nothing allocated after `start()`.
+
+The message and the timing are in the RAMMP RTPS spec
+([rammp-rtps](https://github.com/rammp-org/rammp-rtps), `messages/estop_message.hpp`).
+
+## Repository
 
 | Path | What |
 | --- | --- |
-| `include/estop/estop.hpp` | `estop::Node`, `estop::Latch`: the ESP-IDF API. |
-| `include/estop/core/` | The rules, plain C++ with no I/O and no clock: `codec.hpp` (encode through espp/cdr, allocation-free decode), `node_logic.hpp`, `latch_logic.hpp`. |
-| `src/esp/` | The tasks, the edge interrupt, RTPS. |
-| `test/` | Host tests: codec, node, latch, and the end-to-end race suite (node against latch through the codec). |
-| `test/idf_app/`, `examples/` | Built for the ESP32-P4 in CI through the component manager. |
+| `include/estop/estop.hpp` | `estop::Latch`, `estop::Node`, `estop::Input`. |
+| `include/estop/core/` | The rules in plain C++ (no I/O, no clock): codec, node, latch. |
+| `src/esp/` | The tasks, the interrupt, RTPS. |
+| `examples/` | Complete programs for the ESP32-P4. |
+| `test/` | Host tests, including the node-against-latch race suite. |
 
-## Use from a firmware
-
-```yaml
-# main/idf_component.yml
-dependencies:
-  estop_core:
-    git: https://github.com/Alaining/estop-core.git
-    version: <commit or tag>
-```
-
-The component pulls `rammp_rtps_messages` from rammp-rtps; a firmware with rammp-rtps as a
-submodule (in `EXTRA_COMPONENT_DIRS`) uses its own copy instead.
-
-## Host tests
-
-```sh
-cmake -B build && cmake --build build -j && ctest --test-dir build --output-on-failure
-```
-
-C++23 (GCC 14 or newer), ASan and UBSan on. The build fetches rammp-rtps and cdr; to use
-local checkouts, add `-DFETCHCONTENT_SOURCE_DIR_RAMMP_RTPS=<path>` or
-`-DFETCHCONTENT_SOURCE_DIR_CDR=<path>`.
+Host tests: `cmake -B build && cmake --build build -j && ctest --test-dir build`
+(GCC 14+, ASan/UBSan on).
