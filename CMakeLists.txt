@@ -22,7 +22,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-# The versions pace-hmi-fw builds with: rammp-rtps dev-estop, and the cdr that espp 1.3.2
+# The versions pace-hmi-fw builds with: rammp-rtps feat/estop, and the cdr that espp 1.3.2
 # vendors (components/cdr/detail/cdr).
 FetchContent_Declare(rammp_rtps
   GIT_REPOSITORY https://github.com/rammp-org/rammp-rtps.git

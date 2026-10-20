@@ -1,8 +1,8 @@
 #pragma once
 
-// A switch input for the e-stop tasks: the pull-up on, an interrupt on the chosen edge
-// that only counts and wakes the owning task. No polling: a press shorter than any poll
-// period is still counted. Owned by one task; edges() and pressed() are safe anywhere.
+// A switch input for the e-stop tasks: the configured pull, an interrupt on the pressing
+// edge that only counts and wakes the owning task. No polling: a press shorter than any
+// poll period is still counted. Owned by one task; edges() and pressed() are safe anywhere.
 
 #include <atomic>
 #include <cstdint>
@@ -13,10 +13,26 @@
 
 namespace estop {
 
-/// How a switch is wired. Both switch to GND against the internal pull-up.
-enum class Contact : uint8_t {
-  NO = 0, ///< normally open: pressed pulls the pin LOW
-  NC = 1, ///< normally closed: pressed opens it, the pull-up takes it HIGH
+/// The level the pin reads while the switch is pressed. The interrupt fires on the edge
+/// into that level: falling for LOW, rising for HIGH.
+enum class ActiveLevel : uint8_t {
+  LOW = 0,  ///< pressed pulls the pin low (a normally-open switch to GND, with a pull-up)
+  HIGH = 1, ///< pressed takes the pin high (a normally-closed switch to GND, with a pull-up)
+};
+
+/// The pin's internal resistor.
+enum class Pull : uint8_t {
+  UP,   ///< internal pull-up
+  DOWN, ///< internal pull-down
+  NONE, ///< none: the board has its own resistor
+};
+
+/// One switch input. The defaults are the RAMMP wiring: a normally-open switch shorting the
+/// pin to GND, the internal pull-up holding it high otherwise.
+struct Input {
+  gpio_num_t gpio_num = GPIO_NUM_NC;           ///< GPIO_NUM_NC = no switch
+  ActiveLevel active_level = ActiveLevel::LOW; ///< the level while pressed
+  Pull pull = Pull::UP;
 };
 
 } // namespace estop
@@ -27,18 +43,16 @@ class EdgeInput {
 public:
   enum class Edges : uint8_t { PRESS, BOTH };
 
-  /// Arms `gpio`: input with the pull-up, then (after it settles) the interrupt on the
-  /// pressing edge (falling for NO, rising for NC) or both. Installs the GPIO ISR service
-  /// only if nobody has. False = not armed; the caller retries.
-  bool arm(int gpio, Contact contact, Edges edges, TaskHandle_t task);
+  /// Arms `input`: the pin as an input with its pull, then (after it settles) the interrupt
+  /// on the pressing edge, or on both. Installs the GPIO ISR service only if nobody has.
+  /// False = not armed; the caller retries.
+  bool arm(const Input &input, Edges edges, TaskHandle_t task);
   void disarm();
 
   bool armed() const { return armed_; }
-  int gpio() const { return gpio_; }
-  Contact contact() const { return contact_; }
   uint32_t edges() const { return edges_.load(std::memory_order_relaxed); }
 
-  /// The contact's state now: pressed is LOW for NO, HIGH for NC. False when not armed.
+  /// Whether the pin reads its active level now. False when not armed.
   bool pressed() const;
 
 private:
@@ -46,8 +60,7 @@ private:
 
   std::atomic<uint32_t> edges_{0};
   TaskHandle_t task_ = nullptr;
-  int gpio_ = -1;
-  Contact contact_ = Contact::NO;
+  Input input_{};
   bool armed_ = false;
 };
 

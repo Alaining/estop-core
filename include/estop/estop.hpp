@@ -8,12 +8,12 @@
  *
  * Declare the object static (it holds its task's stack and queues), start() it from
  * app_main, and attach() it to the firmware's RTPS participant once that exists. One
- * task per object owns the rules (estop/core: NodeLogic, LatchLogic); the switch reaches it through
- * an edge interrupt that only counts, received messages through a static queue. After
+ * task per object owns the rules (estop/core: NodeLogic, LatchLogic); the switch reaches it
+ * through an edge interrupt that only counts, received messages through a static queue. After
  * start(), nothing allocates except std::string fields longer than 15 characters in the
  * latch's messages (its cause), which start() reserves room for.
  *
- *     static estop::Node estop_node({.name = "hmi", .gpio = 2});
+ *     static estop::Node estop_node({.name = "hmi", .input = {.gpio_num = GPIO_NUM_2}});
  *     estop_node.start();                  // app_main
  *     estop_node.attach(participant);      // once RTPS is up
  *     if (estop_node.active()) { stop(); } // anywhere, any task
@@ -54,8 +54,7 @@ inline constexpr UBaseType_t kCommandQueueDepth = 4;
 struct Command {
   enum class Kind : uint8_t { ENGAGE, CLEAR_ATTEMPT, SET_INPUT };
   Kind kind;
-  int gpio;
-  Contact contact;
+  Input input;
   char reason[16];
 };
 } // namespace detail
@@ -67,9 +66,8 @@ struct NodeStatus {
   bool latch_engaged = false; ///< the latch says the stop is latched (and is fresh)
   bool latch_fresh = false;   ///< an e-stop message from the latch within the timeout
   bool armed = false;         ///< the switch interrupt is set up (true when there is no switch)
-  int gpio = -1;
-  Contact contact = Contact::NO;
-  uint32_t presses = 0;                 ///< switch edges and engage() calls
+  Input input;                ///< the switch input in use
+  uint32_t presses = 0;       ///< switch edges and engage() calls
   uint32_t clear_attempts_accepted = 0; ///< latch clear attempts this node accepted
   uint32_t clear_attempts_refused = 0;  ///< stale, switch held, or older than the press
   uint32_t rx_errors = 0;               ///< received messages that did not decode or fit
@@ -84,9 +82,8 @@ struct NodeStatus {
 class Node {
 public:
   struct Config {
-    const char *name; ///< EStop.source: 15 characters or fewer, unique per node
-    int gpio = -1;    ///< the switch; -1 = none (engage() only)
-    Contact contact = Contact::NO;
+    const char *name;           ///< EStop.source: 15 characters or fewer, unique per node
+    Input input{};              ///< the e-stop switch; gpio_num GPIO_NUM_NC = none (engage() only)
     bool require_latch = false; ///< no message from the latch within the timeout = active()
     rammp::EStopPolicy policy = rammp::kEStopPolicy;
     UBaseType_t task_priority = 21; ///< above LVGL (20) and lwIP (18) on the HMI
@@ -109,9 +106,9 @@ public:
   /// messages. Any task; not an ISR.
   void engage(const char *reason);
 
-  /// Moves the switch to `gpio` (-1 = none) and `contact`, e.g. from a setting. A switch
-  /// already held there is a press. Any task; waits if four commands are already queued.
-  void set_input(int gpio, Contact contact);
+  /// Moves the switch to `input` (gpio_num GPIO_NUM_NC = none), e.g. from a setting. A
+  /// switch already held there is a press. Any task; waits if four commands are queued.
+  void set_input(const Input &input);
 
   /// True while driving must not happen: this node engaged it, the latch says the stop
   /// is latched, the switch is not armed, the task is not running, or (require_latch)
@@ -179,10 +176,8 @@ public:
   struct Config {
     /// Nodes the deadman expects to hear. The names must outlive the latch.
     std::span<const std::string_view> watched = kDefaultWatched;
-    int gpio = -1; ///< a local e-stop switch; -1 = none
-    Contact contact = Contact::NO;
-    int clear_gpio = -1; ///< the clear input (held for clear_hold); -1 = none
-    Contact clear_contact = Contact::NO;
+    Input input{};       ///< a local e-stop switch; gpio_num GPIO_NUM_NC = none
+    Input clear_input{}; ///< the clear button (held for clear_hold); GPIO_NUM_NC = none
     std::chrono::milliseconds clear_hold{2000};
     rammp::EStopPolicy policy = rammp::kEStopPolicy;
     UBaseType_t task_priority = 21;

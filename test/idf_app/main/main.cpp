@@ -11,11 +11,17 @@
 
 #include "estop/core/latch_logic.hpp"
 #include "estop/core/node_logic.hpp"
+#include "estop/estop.hpp"
 
 namespace {
 
 constexpr const char *kTag = "estop_core";
 constexpr std::string_view kWatched[] = {"hmi"};
+
+// The README's minimal declarations: they must compile as written (-Werror, any subset
+// of Config fields). Never started here.
+[[maybe_unused]] estop::Latch readme_latch({.clear_input = {.gpio_num = GPIO_NUM_35}});
+[[maybe_unused]] estop::Node readme_node({.name = "hmi", .input = {.gpio_num = GPIO_NUM_2}});
 
 estop::core::Time now() { return estop::core::Time{esp_timer_get_time()}; }
 

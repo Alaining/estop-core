@@ -4,6 +4,7 @@
 
 #include <sys/time.h>
 
+#include "driver/gpio.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 
@@ -33,7 +34,7 @@ inline rammp::Time stamp_now() {
 }
 
 /// "switch gpio<n>": fits the 16-byte buffer for any GPIO number.
-inline void switch_reason(char (&out)[16], int gpio) {
+inline void switch_reason(char (&out)[16], gpio_num_t gpio) {
   constexpr char kPrefix[] = "switch gpio";
   std::size_t n = 0;
   for (; kPrefix[n] != '\0'; n++) {

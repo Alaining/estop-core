@@ -24,42 +24,41 @@ bool EdgeInput::pressed() const {
   if (!armed_) {
     return false;
   }
-  const int level = gpio_get_level(static_cast<gpio_num_t>(gpio_));
-  return contact_ == Contact::NO ? level == 0 : level == 1;
+  return gpio_get_level(input_.gpio_num) == static_cast<int>(input_.active_level);
 }
 
 void EdgeInput::disarm() {
-  if (gpio_ < 0) {
+  if (input_.gpio_num == GPIO_NUM_NC) {
     return;
   }
   // Best effort: a pin that will not let go still reads as not armed.
-  const auto pin = static_cast<gpio_num_t>(gpio_);
-  (void)gpio_intr_disable(pin);
-  (void)gpio_isr_handler_remove(pin);
-  gpio_ = -1;
+  (void)gpio_intr_disable(input_.gpio_num);
+  (void)gpio_isr_handler_remove(input_.gpio_num);
+  input_.gpio_num = GPIO_NUM_NC;
   armed_ = false;
 }
 
-bool EdgeInput::arm(int gpio, Contact contact, Edges edges, TaskHandle_t task) {
+bool EdgeInput::arm(const Input &input, Edges edges, TaskHandle_t task) {
   disarm();
-  if (!GPIO_IS_VALID_GPIO(gpio)) {
+  if (!GPIO_IS_VALID_GPIO(input.gpio_num)) {
     return false;
   }
-  const auto pin = static_cast<gpio_num_t>(gpio);
+  const gpio_num_t pin = input.gpio_num;
   task_ = task;
   gpio_config_t io = {};
-  io.pin_bit_mask = 1ULL << static_cast<unsigned>(gpio);
+  io.pin_bit_mask = 1ULL << static_cast<unsigned>(pin);
   io.mode = GPIO_MODE_INPUT;
-  io.pull_up_en = GPIO_PULLUP_ENABLE;
-  io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  io.pull_up_en = input.pull == Pull::UP ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
+  io.pull_down_en = input.pull == Pull::DOWN ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE;
   io.intr_type = GPIO_INTR_DISABLE;
   if (gpio_config(&io) != ESP_OK) {
     return false;
   }
   vTaskDelay(kSettleTicks);
-  const gpio_int_type_t type = edges == Edges::BOTH     ? GPIO_INTR_ANYEDGE
-                               : contact == Contact::NO ? GPIO_INTR_NEGEDGE
-                                                        : GPIO_INTR_POSEDGE;
+  // The pressing edge is the one into the active level.
+  const gpio_int_type_t type = edges == Edges::BOTH                     ? GPIO_INTR_ANYEDGE
+                               : input.active_level == ActiveLevel::LOW ? GPIO_INTR_NEGEDGE
+                                                                        : GPIO_INTR_POSEDGE;
   if (gpio_set_intr_type(pin, type) != ESP_OK) {
     return false;
   }
@@ -77,8 +76,7 @@ bool EdgeInput::arm(int gpio, Contact contact, Edges edges, TaskHandle_t task) {
     (void)gpio_isr_handler_remove(pin);
     return false;
   }
-  gpio_ = gpio;
-  contact_ = contact;
+  input_ = input;
   armed_ = true;
   return true;
 }
