@@ -15,7 +15,7 @@ a GPIO and your RTPS participant, and the board takes part in the e-stop on `ram
 ```yaml
 dependencies:
   estop_core:
-    git: https://github.com/Alaining/estop-core.git
+    git: https://github.com/rammp-org/rammp-estop-core.git
     version: v0.3.0
 ```
 
