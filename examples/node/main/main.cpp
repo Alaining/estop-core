@@ -7,7 +7,7 @@
 //     watches. If it goes silent, the latch stops the robot anyway (deadman).
 //   - Only the latch can end the request: it sends a "clear attempt", and the node accepts
 //     it only if the switch is no longer held.
-//   - active() says whether driving must not happen. Check it before every motion command.
+//   - is_active() says whether driving must not happen. Check it before every motion command.
 //
 // Wiring assumed here: a normally-open switch between GPIO2 and GND. The internal pull-up
 // keeps the pin high; pressing pulls it low.
@@ -46,9 +46,9 @@ estop::Node node({
 
 extern "C" void app_main(void) {
   // 1. Start the node first, before the network: from here the switch is watched and
-  //    active() is meaningful. Until start() succeeds, active() is true (fail-safe).
+  //    is_active() is meaningful. Until start() succeeds, is_active() is true (fail-safe).
   if (!node.start()) {
-    ESP_LOGE(kTag, "e-stop node did not start: active() stays true");
+    ESP_LOGE(kTag, "e-stop node did not start: is_active() stays true");
   }
 
   // 2. Bring up the network (here IDF's example helper: the P4's internal Ethernet).
@@ -68,11 +68,11 @@ extern "C" void app_main(void) {
     ESP_LOGE(kTag, "RTPS did not come up: the latch will stop the robot (deadman)");
   }
 
-  // 4. Use it. active() is one atomic load, safe from any task (and from an ISR): gate
+  // 4. Use it. is_active() is one atomic load, safe from any task (and from an ISR): gate
   //    every motion command on it. status() is a full copy, for the UI and the log.
   //    Software can also request the stop: node.engage("motor fault").
   for (;;) {
-    if (node.active()) {
+    if (node.is_active()) {
       // Stop, or refuse to start, any motion here.
     }
     const estop::NodeStatus s = node.status();

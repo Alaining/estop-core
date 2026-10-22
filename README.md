@@ -43,7 +43,7 @@ extern "C" void app_main() {
   // ... bring up the network, create and start your espp::RtpsParticipant ...
   latch.attach(participant);           // adds the rammp/estop writer and reader
   // ...
-  if (latch.active()) { stop_motors(); }  // every cycle, any task
+  if (latch.is_active()) { stop_motors(); }  // every cycle, any task
 }
 ```
 
@@ -81,13 +81,13 @@ That's all. The complete, commented programs are `examples/latch` (MIB) and
 | --- | --- | --- |
 | `start()` | Arms the inputs, starts the task. Once, first in app_main. | Same. |
 | `attach(participant)` | Adds the e-stop writer and reader. Once, after start(). | Same. |
-| `active()` | The stop is in force: no motion. | Do not drive: pressed, or the latch says stopped. |
+| `is_active()` | The stop is in force: no motion. | Do not drive: pressed, or the latch says stopped. |
 | `engage(reason)` | Stop for your own reason (a fault). | Same as a press. |
 | `start_clear_attempt()` | End the stop, as holding the clear button does. | |
 | `set_input(input)` | | Move the switch (e.g. from a setting). |
 | `status()` | A copy for the UI and the log: cause, attempts, releases. | A copy: counters, the latch's reason. |
 
-`active()` is one atomic load, safe from any task. Until `start()` succeeds it is true.
+`is_active()` is one atomic load, safe from any task. Until `start()` succeeds it is true.
 
 ## How it works
 
