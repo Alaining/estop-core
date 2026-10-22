@@ -19,7 +19,7 @@ dependencies:
     version: v0.2.0
 ```
 
-It brings espp/rtps, espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your
+It brings espp/rtps (1.3.10 or newer), espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your
 firmware already has rammp-rtps as a submodule, point the message at it so there is one copy:
 
 ```yaml
@@ -55,6 +55,25 @@ with the internal pull-up (pressed = LOW). Change it per input:
           .active_level = estop::ActiveLevel::LOW,  // HIGH for a normally-closed switch
           .pull = estop::Pull::UP}                  // or DOWN, or NONE (external resistor)
 ```
+
+**4. Give the RTPS tasks a high enough priority.** The latch has a **deadman**: it treats
+a watched board it has not heard from for 300 ms as dead, and stops the robot. That is what
+catches a crashed board or a pulled cable. But the deadman can't tell a dead board from one
+that is alive but too busy to send. Every e-stop message goes out and comes in through
+espp's RTPS tasks (`rtps_worker_<n>`, `rtps_reactor`), which run at priority 5 by default. If
+a task of higher priority keeps the CPU for more than 300 ms (an LVGL screen build at 20,
+for example), the e-stop messages wait, and the deadman stops the robot for nothing.
+
+So set the RTPS tasks at or above your busiest task, in `sdkconfig.defaults`:
+
+```
+CONFIG_RTPS_THREAD_POOL_READER_PRIO=20
+```
+
+(menuconfig: Component config → RTPS → Transport task priority (advanced); espp 1.3.10 or
+newer, which estop-core requires). These tasks also run every RTPS callback in your app, so
+keep the callbacks short and never block in them, for example on a UI lock: a blocked
+callback holds up the e-stop messages the same way.
 
 That's all. The complete, commented programs are `examples/latch` (MIB) and
 `examples/node` (HMI).

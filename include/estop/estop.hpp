@@ -86,7 +86,9 @@ public:
     Input input{};              ///< the e-stop switch; gpio_num GPIO_NUM_NC = none (engage() only)
     bool require_latch = false; ///< no message from the latch within the timeout = active()
     rammp::EStopPolicy policy = rammp::kEStopPolicy;
-    UBaseType_t task_priority = 21; ///< above LVGL (20) and lwIP (18) on the HMI
+    /// This task decides and queues each send. The send itself runs on espp's RTPS
+    /// tasks, at CONFIG_RTPS_THREAD_POOL_READER_PRIO (README, step 4), not at this one.
+    UBaseType_t task_priority = 21;
     BaseType_t task_core = 0;
   };
 

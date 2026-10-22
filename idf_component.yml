@@ -5,7 +5,10 @@ license: MIT
 dependencies:
   idf: ">=5.5"
   espp/cdr: ">=1.3.2"
-  espp/rtps: ">=1.3.2"
+  # 1.3.10 adds CONFIG_RTPS_THREAD_POOL_READER_PRIO (esp-cpp/espp#856). Without it the
+  # RTPS tasks stay at priority 5, and a busy app task can starve the e-stop messages
+  # long enough to trip the deadman (README, step 4).
+  espp/rtps: ">=1.3.10"
   # The message and its policy. A firmware that has rammp-rtps as a submodule overrides
   # this with its own copy (a project or EXTRA_COMPONENT_DIRS component wins).
   rammp_rtps_messages:
