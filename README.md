@@ -19,7 +19,7 @@ dependencies:
     version: v0.2.0
 ```
 
-It brings espp/rtps, espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your
+It brings espp/rtps (1.3.10 or newer), espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your
 firmware already has rammp-rtps as a submodule, point the message at it so there is one copy:
 
 ```yaml
@@ -55,6 +55,22 @@ with the internal pull-up (pressed = LOW). Change it per input:
           .active_level = estop::ActiveLevel::LOW,  // HIGH for a normally-closed switch
           .pull = estop::Pull::UP}                  // or DOWN, or NONE (external resistor)
 ```
+
+**4. Raise the RTPS task priority.** The latch's **deadman** stops the robot when a watched
+board is silent for 300 ms, which catches a crash or a pulled cable. It can't tell a dead
+board from a busy one, though. E-stop messages go through espp's RTPS tasks (priority 5 by
+default), so a busier task holding the CPU past 300 ms (an LVGL screen build at 20) trips it
+for nothing. Set those tasks at or above your busiest task, in `sdkconfig.defaults`:
+
+```
+CONFIG_RTPS_THREAD_POOL_READER_PRIO=20
+```
+
+In menuconfig: Component config → RTPS → Transport task priority (advanced). These tasks also
+run your RTPS callbacks, so never block in a callback (on a UI lock, for example).
+
+For bench tests, `.deadman = false` in the latch's `.policy` turns the deadman off. Then only
+a press stops the robot, not a crash or a pulled cable.
 
 That's all. The complete, commented programs are `examples/latch` (MIB) and
 `examples/node` (HMI).
