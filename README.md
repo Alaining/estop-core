@@ -16,7 +16,7 @@ a GPIO and your RTPS participant, and the board takes part in the e-stop on `ram
 dependencies:
   estop_core:
     git: https://github.com/Alaining/estop-core.git
-    version: v0.2.0
+    version: v0.3.0
 ```
 
 It brings espp/rtps (1.3.10 or newer), espp/cdr and the RAMMP message (`rammp_rtps_messages`). If your

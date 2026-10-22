@@ -1,4 +1,4 @@
-version: "0.2.0"
+version: "0.3.0"
 description: "RAMMP robot-wide e-stop on the rammp/estop RTPS topic: node, latch and codec."
 url: https://github.com/Alaining/estop-core
 license: MIT
