@@ -56,29 +56,21 @@ with the internal pull-up (pressed = LOW). Change it per input:
           .pull = estop::Pull::UP}                  // or DOWN, or NONE (external resistor)
 ```
 
-**4. Give the RTPS tasks a high enough priority.** The latch has a **deadman**: it treats
-a watched board it has not heard from for 300 ms as dead, and stops the robot. That is what
-catches a crashed board or a pulled cable. But the deadman can't tell a dead board from one
-that is alive but too busy to send. Every e-stop message goes out and comes in through
-espp's RTPS tasks (`rtps_worker_<n>`, `rtps_reactor`), which run at priority 5 by default. If
-a task of higher priority keeps the CPU for more than 300 ms (an LVGL screen build at 20,
-for example), the e-stop messages wait, and the deadman stops the robot for nothing.
-
-The deadman can be turned off in the latch's config, with `.deadman = false` in its
-`.policy`. Then only a press (ENGAGED) stops the robot, and a clear attempt no longer waits
-to have heard from every watched board. It also means a crashed board or a pulled cable no
-longer stops the robot, so keep it on outside the bench.
-
-So set the RTPS tasks at or above your busiest task, in `sdkconfig.defaults`:
+**4. Raise the RTPS task priority.** The latch's **deadman** stops the robot when a watched
+board is silent for 300 ms, which catches a crash or a pulled cable. It can't tell a dead
+board from a busy one, though. E-stop messages go through espp's RTPS tasks (priority 5 by
+default), so a busier task holding the CPU past 300 ms (an LVGL screen build at 20) trips it
+for nothing. Set those tasks at or above your busiest task, in `sdkconfig.defaults`:
 
 ```
 CONFIG_RTPS_THREAD_POOL_READER_PRIO=20
 ```
 
-(menuconfig: Component config → RTPS → Transport task priority (advanced); espp 1.3.10 or
-newer, which estop-core requires). These tasks also run every RTPS callback in your app, so
-keep the callbacks short and never block in them, for example on a UI lock: a blocked
-callback holds up the e-stop messages the same way.
+In menuconfig: Component config → RTPS → Transport task priority (advanced). These tasks also
+run your RTPS callbacks, so never block in a callback (on a UI lock, for example).
+
+For bench tests, `.deadman = false` in the latch's `.policy` turns the deadman off. Then only
+a press stops the robot, not a crash or a pulled cable.
 
 That's all. The complete, commented programs are `examples/latch` (MIB) and
 `examples/node` (HMI).
