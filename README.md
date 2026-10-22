@@ -64,6 +64,11 @@ espp's RTPS tasks (`rtps_worker_<n>`, `rtps_reactor`), which run at priority 5 b
 a task of higher priority keeps the CPU for more than 300 ms (an LVGL screen build at 20,
 for example), the e-stop messages wait, and the deadman stops the robot for nothing.
 
+The deadman can be turned off in the latch's config, with `.deadman = false` in its
+`.policy`. Then only a press (ENGAGED) stops the robot, and a clear attempt no longer waits
+to have heard from every watched board. It also means a crashed board or a pulled cable no
+longer stops the robot, so keep it on outside the bench.
+
 So set the RTPS tasks at or above your busiest task, in `sdkconfig.defaults`:
 
 ```
