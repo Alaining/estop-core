@@ -16,7 +16,7 @@
  *     static estop::Node estop_node({.name = "hmi", .input = {.gpio_num = GPIO_NUM_2}});
  *     estop_node.start();                  // app_main
  *     estop_node.attach(participant);      // once RTPS is up
- *     if (estop_node.active()) { stop(); } // anywhere, any task
+ *     if (estop_node.is_active()) { stop(); } // anywhere, any task
  */
 
 #include <array>
@@ -61,7 +61,7 @@ struct Command {
 
 /// A Node's state, as a copy any task can hold.
 struct NodeStatus {
-  bool active = true;         ///< do not drive: the same as Node::active()
+  bool active = true;         ///< do not drive: the same as Node::is_active()
   bool engaged = false;       ///< this node asks for the stop, until the latch's clear attempt
   bool latch_engaged = false; ///< the latch says the stop is latched (and is fresh)
   bool latch_fresh = false;   ///< an e-stop message from the latch within the timeout
@@ -84,9 +84,11 @@ public:
   struct Config {
     const char *name;           ///< EStop.source: 15 characters or fewer, unique per node
     Input input{};              ///< the e-stop switch; gpio_num GPIO_NUM_NC = none (engage() only)
-    bool require_latch = false; ///< no message from the latch within the timeout = active()
+    bool require_latch = false; ///< no message from the latch within the timeout = is_active()
     rammp::EStopPolicy policy = rammp::kEStopPolicy;
-    UBaseType_t task_priority = 21; ///< above LVGL (20) and lwIP (18) on the HMI
+    /// This task decides and queues each send. The send itself runs on espp's RTPS
+    /// tasks, at CONFIG_RTPS_THREAD_POOL_READER_PRIO (README, step 4), not at this one.
+    UBaseType_t task_priority = 21;
     BaseType_t task_core = 0;
   };
 
@@ -95,7 +97,7 @@ public:
   Node &operator=(const Node &) = delete;
 
   /// Arms the switch and starts the task. Once, from app_main. False = it could not
-  /// start (a name longer than 15 characters, or no task), and active() stays true.
+  /// start (a name longer than 15 characters, or no task), and is_active() stays true.
   bool start();
 
   /// Adds the e-stop writer and reader to `participant`, which must outlive the node.
@@ -113,7 +115,8 @@ public:
   /// True while driving must not happen: this node engaged it, the latch says the stop
   /// is latched, the switch is not armed, the task is not running, or (require_latch)
   /// the latch is silent. Any task, an ISR included; one atomic load.
-  bool active() const { return active_.load(std::memory_order_relaxed); }
+  bool is_active() const { return active_.load(std::memory_order_relaxed); }
+  [[deprecated("use is_active()")]] bool active() const { return is_active(); }
 
   /// A consistent copy of the state. Any task.
   NodeStatus status() const;
@@ -156,7 +159,7 @@ inline constexpr std::string_view kDefaultWatched[] = {"hmi"};
 
 /// A Latch's state, as a copy any task can hold.
 struct LatchStatus {
-  bool latched = true; ///< the stop is in force: the same as Latch::active()
+  bool latched = true; ///< the stop is in force: the same as Latch::is_active()
   bool clear_attempt_running = false;
   bool armed = false;          ///< the switch interrupt is set up (true when none)
   bool clear_armed = false;    ///< the clear input is set up (true when none)
@@ -202,7 +205,8 @@ public:
   void engage(const char *reason);
 
   /// True while the stop is latched, or the task is not running. Any task; one load.
-  bool active() const { return active_.load(std::memory_order_relaxed); }
+  bool is_active() const { return active_.load(std::memory_order_relaxed); }
+  [[deprecated("use is_active()")]] bool active() const { return is_active(); }
 
   /// A consistent copy of the state. Any task.
   LatchStatus status() const;

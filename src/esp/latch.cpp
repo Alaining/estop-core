@@ -90,7 +90,7 @@ void Latch::engage(const char *reason) {
   detail::Command command{.kind = detail::Command::Kind::ENGAGE, .input = {}, .reason = {}};
   core::copy_text(command.reason, reason != nullptr ? reason : "");
   if (task_ == nullptr) {
-    return; // not started: active() is already true
+    return; // not started: is_active() is already true
   }
   if (xQueueSend(command_queue_, &command, 0) != pdTRUE) {
     engage_pending_.store(true); // the queue is full: engage anyway, without the reason

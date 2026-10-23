@@ -9,7 +9,7 @@
 //     node to clear; it RELEASES once each one has answered NOT_ENGAGED. A node refuses
 //     while its switch is still held, and the attempt expires after 1 s.
 //   - It sends its own state on rammp/estop every 100 ms, so nodes can show the stop.
-//   - active() says the stop is in force. The motor code must check it: while active(),
+//   - is_active() says the stop is in force. The motor code must check it: while is_active(),
 //     no motion.
 //
 // Wiring assumed here: a normally-open clear button between GPIO35 and GND (internal
@@ -58,7 +58,7 @@ extern "C" void app_main(void) {
   //    so nothing can move until every watched node has been heard and a clear attempt
   //    has succeeded.
   if (!latch.start()) {
-    ESP_LOGE(kTag, "e-stop latch did not start: active() stays true");
+    ESP_LOGE(kTag, "e-stop latch did not start: is_active() stays true");
   }
 
   // 2. Bring up the network (here IDF's example helper: the P4's internal Ethernet).
@@ -78,14 +78,14 @@ extern "C" void app_main(void) {
   }
 
   // 4. Use it:
-  //    - latch.active(): one atomic load, any task. Gate every motor command on it, e.g. in
-  //      your drive state machine: if (latch.active()) { disable_drive(); }
+  //    - latch.is_active(): one atomic load, any task. Gate every motor command on it, e.g. in
+  //      your drive state machine: if (latch.is_active()) { disable_drive(); }
   //    - latch.engage("reason"): your own reasons to stop (a fault, an overcurrent).
   //    - latch.start_clear_attempt(): the same as holding the clear button, for a clear
   //      that comes from software (a UI command, a CLI).
   //    - latch.status(): a full copy (cause, attempts, releases) for the UI and the log.
   for (;;) {
-    if (latch.active()) {
+    if (latch.is_active()) {
       // Stop the motors here, every cycle.
     }
     const estop::LatchStatus s = latch.status();

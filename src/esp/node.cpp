@@ -70,7 +70,7 @@ void Node::engage(const char *reason) {
   detail::Command command{.kind = detail::Command::Kind::ENGAGE, .input = {}, .reason = {}};
   core::copy_text(command.reason, reason != nullptr ? reason : "");
   if (task_ == nullptr) {
-    return; // not started: active() is already true
+    return; // not started: is_active() is already true
   }
   if (xQueueSend(command_queue_, &command, 0) != pdTRUE) {
     engage_pending_.store(true); // the queue is full: engage anyway, without the reason
@@ -93,7 +93,7 @@ void Node::set_input(const Input &input) {
 NodeStatus Node::status() const {
   NodeStatus status;
   if (status_queue_ == nullptr || xQueuePeek(status_queue_, &status, 0) != pdTRUE) {
-    status.active = true; // not started: say active, as active() does
+    status.active = true; // not started: say active, as is_active() does
   }
   return status;
 }
@@ -171,7 +171,7 @@ void Node::run() {
     }
 
     // A new pin or contact, or arming failed last time (retried every period; until it
-    // works active() holds). A switch already held on the new pin is a press: the edge
+    // works is_active() holds). A switch already held on the new pin is a press: the edge
     // interrupt alone would never see it.
     const bool has_switch = status_.input.gpio_num != GPIO_NUM_NC;
     if (rearm || (has_switch && !input_.armed())) {
